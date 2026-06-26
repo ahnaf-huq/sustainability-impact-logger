@@ -21,6 +21,29 @@ function formatLabel(value: string) {
   return value.charAt(0) + value.slice(1).toLowerCase();
 }
 
+async function getErrorMessage(response: Response) {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    const data: unknown = await response.json().catch(() => null);
+
+    if (
+      data &&
+      typeof data === "object" &&
+      "error" in data &&
+      typeof data.error === "string"
+    ) {
+      return data.error;
+    }
+  }
+
+  const text = await response.text().catch(() => "");
+
+  return text
+    ? text.slice(0, 180)
+    : `Request failed with status ${response.status}.`;
+}
+
 export default function ImpactItemActions({
   id,
   initialStatus,
@@ -32,6 +55,8 @@ export default function ImpactItemActions({
   const [isDeleting, setIsDeleting] = useState(false);
 
   async function updateStatus(newStatus: ImpactStatus) {
+    const previousStatus = status;
+
     setStatus(newStatus);
     setIsSaving(true);
 
@@ -47,13 +72,18 @@ export default function ImpactItemActions({
       });
 
       if (!response.ok) {
-        throw new Error("Could not update status.");
+        throw new Error(await getErrorMessage(response));
       }
 
       router.refresh();
-    } catch {
-      setStatus(initialStatus);
-      alert("Could not update the status. Please try again.");
+    } catch (error) {
+      setStatus(previousStatus);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not update the status."
+      );
     } finally {
       setIsSaving(false);
     }
@@ -76,12 +106,19 @@ export default function ImpactItemActions({
       });
 
       if (!response.ok) {
-        throw new Error("Could not delete item.");
+        throw new Error(await getErrorMessage(response));
       }
 
+      // Do not call response.json() here.
+      // DELETE returns 204 No Content.
       router.refresh();
-    } catch {
-      alert("Could not delete this item. Please try again.");
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not delete this item."
+      );
+
       setIsDeleting(false);
     }
   }

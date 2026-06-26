@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { ZodError } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { impactItemSchema } from "@/lib/validators";
@@ -14,10 +13,10 @@ export async function GET() {
 
     return NextResponse.json(items);
   } catch (error) {
-    console.error("Failed to fetch impact items:", error);
+    console.error("GET impact items failed:", error);
 
     return NextResponse.json(
-      { error: "Failed to fetch impact items." },
+      { error: "Could not fetch impact items." },
       { status: 500 }
     );
   }
@@ -25,42 +24,37 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body: unknown = await request.json();
 
-    const validated = impactItemSchema.parse(body);
+    const validated = impactItemSchema.safeParse(body);
 
-    const item = await prisma.impactItem.create({
-      data: validated,
-    });
-
-    return NextResponse.json(item, {
-      status: 201,
-    });
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      return NextResponse.json(
-        {
-          error:
-            "Invalid or missing JSON request body. Send valid JSON with Content-Type: application/json.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (error instanceof ZodError) {
+    if (!validated.success) {
       return NextResponse.json(
         {
           error: "Validation failed.",
-          details: error.issues,
+          details: validated.error.issues,
         },
         { status: 400 }
       );
     }
 
-    console.error("Failed to create impact item:", error);
+    const createdItem = await prisma.impactItem.create({
+      data: validated.data,
+    });
+
+    return NextResponse.json(createdItem, {
+      status: 201,
+    });
+  } catch (error) {
+    console.error("POST impact item failed:", error);
 
     return NextResponse.json(
-      { error: "Failed to create impact item." },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Could not create impact item.",
+      },
       { status: 500 }
     );
   }
